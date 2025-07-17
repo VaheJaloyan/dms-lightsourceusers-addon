@@ -17,6 +17,9 @@ class DMS_Addon {
 	private static ?DMS_Addon $_instance = null;
 
 	public $rewrite_scenario = null;
+
+	public $auth_domains = array();
+
 	public Request_Params $request_params;
 
 	/**
@@ -55,16 +58,19 @@ class DMS_Addon {
 	protected function define_rewrite_options() {
 		$url_rewrite = Setting::find( 'dms_rewrite_urls_on_mapped_page' )->get_value();
 		if ( ! empty( $url_rewrite ) ) {
-			$rewrite_scenario       =  (int) Setting::find( 'dms_rewrite_urls_on_mapped_page_sc' )->get_value();
+			$rewrite_scenario       = (int) Setting::find( 'dms_rewrite_urls_on_mapped_page_sc' )->get_value();
 			$this->rewrite_scenario = ! empty( $rewrite_scenario ) && in_array( $rewrite_scenario, [
 				URI_Handler::REWRITING_GLOBAL,
 				URI_Handler::REWRITING_SELECTIVE
 			] ) ? $rewrite_scenario : URI_Handler::REWRITING_GLOBAL;
 		}
+
+		$allowed_sub_domain_ids   = Setting::find( 'dms_subdomain_authentication_mappings' )->get_value();
+		$allowed_alias_domain_ids = Setting::find( 'dms_alias_domain_authentication_mappings' )->get_value();
+		$this->auth_domains       = array_intersect( $allowed_sub_domain_ids, $allowed_alias_domain_ids );
 	}
 
-	public
-	function prepare_filters() {
+	public function prepare_filters() {
 		add_filter( 'includes_url', [ $this, 'rewrite_urls' ], 999999, 2 );
 		add_filter( 'plugins_url', [ $this, 'rewrite_urls' ], 999999, 3 );
 		add_filter( 'rest_url', [ $this, 'rewrite_urls_with_trail' ], 999999, 2 );
@@ -125,8 +131,11 @@ class DMS_Addon {
 		}
 
 		$mapping = Helper::matching_mapping_from_db( $this->request_params->domain, $this->request_params->path );
+		if ( ! empty( $mapping->id ) && in_array( $mapping->id, $this->auth_domains ) ) {
+			return $this->get_rewritten_url( $mapping, $url );
+		}
 
-		return $this->get_rewritten_url( $mapping, $url );
+		return $url;
 	}
 
 	/**
