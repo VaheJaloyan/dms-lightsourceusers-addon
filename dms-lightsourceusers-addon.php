@@ -3,9 +3,9 @@
  * Plugin Name: Domain Mapping System Addon for Lightsource
  * Description: Adds support for Lightsource Users with active Domain Mapping System plugin. Requires PHP 8.0+.
  * Version: 1.0.0
- * Author: Your Name
+ * Author: Limb
  * Requires PHP: 8.0
- * Requires Plugins: domain-mapping-system-pro
+ * Requires Plugins: domain-mapping-system-pro, buddyboss-platform
  */
 
 // Exit if accessed directly.
