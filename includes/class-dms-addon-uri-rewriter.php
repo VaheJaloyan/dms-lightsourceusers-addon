@@ -55,10 +55,7 @@ class DMS_Addon_Uri_Rewriter {
 	 */
 	protected function rewrite_const_urls(): void {
 		if ( class_exists( 'BuddyPress' ) && method_exists( 'BuddyPress', 'instance' ) ) {
-			$bp = \BuddyPress::instance();
-			if ( isset( $bp->plugin_url ) ) {
-				$bp->plugin_url = $this->rewrite_url( $bp->plugin_url );
-			}
+			\BuddyPress::instance()->plugin_url = $this->rewrite_url( \BuddyPress::instance()->plugin_url );
 		}
 	}
 
@@ -78,19 +75,19 @@ class DMS_Addon_Uri_Rewriter {
 			] ) ? $rewrite_scenario : URI_Handler::REWRITING_GLOBAL;
 		}
 
-		// Always ensure array_merge gets arrays
-		$allowed_sub_domain_ids   = Setting::find( 'dms_subdomain_authentication_mappings' );
-		$allowed_alias_domain_ids = Setting::find( 'dms_alias_domain_authentication_mappings' );
-
-		$sub_domains = $allowed_sub_domain_ids && is_array( $allowed_sub_domain_ids->get_value() )
-			? $allowed_sub_domain_ids->get_value()
-			: [];
-
-		$alias_domains = $allowed_alias_domain_ids && is_array( $allowed_alias_domain_ids->get_value() )
-			? $allowed_alias_domain_ids->get_value()
-			: [];
-
-		$this->auth_domains = array_merge( $sub_domains, $alias_domains );
+//		// Always ensure array_merge gets arrays
+//		$allowed_sub_domain_ids   = Setting::find( 'dms_subdomain_authentication_mappings' );
+//		$allowed_alias_domain_ids = Setting::find( 'dms_alias_domain_authentication_mappings' );
+//
+//		$sub_domains = $allowed_sub_domain_ids && is_array( $allowed_sub_domain_ids->get_value() )
+//			? $allowed_sub_domain_ids->get_value()
+//			: [];
+//
+//		$alias_domains = $allowed_alias_domain_ids && is_array( $allowed_alias_domain_ids->get_value() )
+//			? $allowed_alias_domain_ids->get_value()
+//			: [];
+//
+//		$this->auth_domains = array_merge( $sub_domains, $alias_domains );
 	}
 
 	/**
@@ -100,6 +97,7 @@ class DMS_Addon_Uri_Rewriter {
 	 * to the current domain and path as per the Domain Mapping System settings.
 	 */
 	public function prepare_filters() {
+		add_filter( 'tribe_events_enable_month_view_cache', '__return_false' );
 		add_filter( 'includes_url', [ $this, 'rewrite_urls' ], 999999, 2 );
 		add_filter( 'plugins_url', [ $this, 'rewrite_urls' ], 999999, 3 );
 		add_filter( 'rest_url', [ $this, 'rewrite_urls_with_trail' ], 999999, 2 );
@@ -107,8 +105,14 @@ class DMS_Addon_Uri_Rewriter {
 		add_filter( 'wp_get_attachment_url', [ $this, 'rewrite_attachment_urls' ], 999999, 1 );
 		add_filter( 'logout_url', [ $this, 'rewrite_urls' ], 999999, 2 );
 		add_filter( 'login_url', [ $this, 'rewrite_urls' ], 999999, 3 );
-		add_filter( 'content_url', [ $this, 'rewrite_url' ], 9999 );
-		add_filter( 'bp_get_theme_compat_url', [ $this, 'rewrite_url' ], 9999 );
+		add_filter( 'content_url', [ $this, 'rewrite_url' ], 999999 );
+		add_filter( 'bp_get_theme_compat_url', [ $this, 'rewrite_url' ], 999999 );
+		add_filter( 'dms_rewritten_url', [ $this, 'normalize_start_url' ], 999999 );
+		// Only apply script/style rewriting in admin
+		if ( is_admin() ) {
+			add_filter( 'script_loader_src', [ $this, 'rewrite_urls_asset' ], 999999, 1 );
+			add_filter( 'style_loader_src', [ $this, 'rewrite_urls_asset' ], 999999, 1 );
+		}
 	}
 
 	/**
@@ -124,6 +128,19 @@ class DMS_Addon_Uri_Rewriter {
 		return $this->rewrite_url( $url ) ?? $url;
 	}
 
+	public function rewrite_urls_asset( string $url, ?string $path = null, ?string $plugin = '' ): string {
+		$base_host = $this->request_params->get_base_host();
+		$parsed_host = parse_url( $url, PHP_URL_HOST );
+
+		// If the URL doesn't contain the base host, skip rewriting
+		if ( empty( $parsed_host ) || stripos( $parsed_host, $base_host ) === false ) {
+			return $url;
+		}
+
+		// Continue with the rewrite
+		return $this->rewrite_url( $url ) ?? $url;
+	}
+
 	/**
 	 * URL rewriting with trailing slash
 	 *
@@ -133,7 +150,7 @@ class DMS_Addon_Uri_Rewriter {
 	 * @return string
 	 */
 	public function rewrite_urls_with_trail( string $url, ?string $path = null ): string {
-		return rtrim( $this->rewrite_url( $url ) ?? $url, '/' ) . '/';
+		return rtrim( $this->rewrite_url_rest( $url ) ?? $url, '/' ) . '/';
 	}
 
 	/**
@@ -159,13 +176,22 @@ class DMS_Addon_Uri_Rewriter {
 			return $url;
 		}
 
-		if ( empty( $this->request_params->domain ) || ! is_array( $this->auth_domains ) ) {
+		$mapping = Helper::matching_mapping_from_db( $this->request_params->domain, $this->request_params->path );
+		if ( ! empty( $mapping ) && ! empty( $mapping->id ) ) {
+			return $this->get_rewritten_url( $mapping, $url );
+		}
+
+		return $url;
+	}
+
+
+	public function rewrite_url_rest( ?string $url ): ?string {
+		if ( empty( $url ) || $this->rewrite_scenario !== URI_Handler::REWRITING_GLOBAL ) {
 			return $url;
 		}
 
 		$mapping = Helper::matching_mapping_from_db( $this->request_params->domain, $this->request_params->path );
-
-		if ( ! empty( $mapping ) && ! empty( $mapping->id ) && in_array( $mapping->id, $this->auth_domains, true ) ) {
+		if ( ! empty( $mapping ) && ! empty( $mapping->id ) ) {
 			return $this->get_rewritten_url( $mapping, $url );
 		}
 
@@ -199,5 +225,10 @@ class DMS_Addon_Uri_Rewriter {
 		}
 
 		return apply_filters( 'dms_rewritten_url', $link, $this->rewrite_scenario );
+	}
+
+	public function normalize_start_url ($url, $scenario = null): string {
+		$url = ltrim( $url, '/' );
+		return $url;
 	}
 }

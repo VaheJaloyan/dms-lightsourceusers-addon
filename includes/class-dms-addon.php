@@ -45,7 +45,7 @@ class DMS_Addon {
 		}
 	}
 
-	protected static function log_debug( string $message ): void {
+	public static function log_debug( string $message ): void {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 			error_log( '[DMS ADDON] ' . $message );
 		}
