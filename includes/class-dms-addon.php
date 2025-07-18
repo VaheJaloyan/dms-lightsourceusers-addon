@@ -40,7 +40,6 @@ class DMS_Addon {
 	protected function init(): void {
 		try {
 			DMS_Addon_Uri_Rewriter::get_instance();
-			self::log_debug( 'DMS_Addon_Uri_Rewriter initialized successfully.' );
 		} catch ( \Throwable $e ) {
 			self::log_debug( 'Failed to initialize DMS_Addon_Uri_Rewriter: ' . $e->getMessage() );
 		}
