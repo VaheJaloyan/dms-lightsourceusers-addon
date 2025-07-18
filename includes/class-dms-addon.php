@@ -15,6 +15,13 @@ class DMS_Addon {
 	public Request_Params $request_params;
 
 	/**
+	 * DMS_Addon constructor.
+	 */
+	private function __construct() {
+		$this->init();
+	}
+
+	/**
 	 * Returns the main instance of DMS_Addon.
 	 *
 	 * @return DMS_Addon
@@ -28,12 +35,8 @@ class DMS_Addon {
 	}
 
 	/**
-	 * DMS_Addon constructor.
+	 * Initialize the DMS_Addon.
 	 */
-	private function __construct() {
-		$this->init();
-	}
-
 	protected function init(): void {
 		DMS_Addon_Uri_Rewriter::get_instance();
 	}

@@ -18,6 +18,14 @@ class DMS_Addon_Uri_Rewriter {
 	private static ?DMS_Addon_Uri_Rewriter $_instance = null;
 
 	/**
+	 * DMS_Addon constructor.
+	 */
+	private function __construct() {
+		$this->request_params = new Request_Params();
+		$this->init();
+	}
+
+	/**
 	 * Returns the main instance of DMS_Addon.
 	 *
 	 * @return DMS_Addon_Uri_Rewriter
@@ -31,25 +39,32 @@ class DMS_Addon_Uri_Rewriter {
 	}
 
 	/**
-	 * DMS_Addon constructor.
+	 * Init rewrite scenario
 	 */
-	private function __construct() {
-		$this->request_params = new Request_Params();
-		$this->init();
-	}
-
 	protected function init(): void {
 		$this->define_rewrite_options();
 		$this->rewrite_const_urls();
 		$this->prepare_filters();
 	}
 
+	/**
+	 * Rewrite BuddyPress constant URLs
+	 *
+	 * This method rewrites the BuddyPress plugin URL to ensure it matches the current domain mapping.
+	 * It is called during the initialization of the DMS_Addon_Uri_Rewriter class.
+	 */
 	protected function rewrite_const_urls(): void {
 		if ( class_exists( 'BuddyPress' ) ) {
 			\BuddyPress::instance()->plugin_url = $this->rewrite_url( \BuddyPress::instance()->plugin_url );
 		}
 	}
 
+	/**
+	 * Define rewrite options based on settings
+	 *
+	 * This method retrieves the URL rewriting settings from the database and sets the rewrite scenario
+	 * and allowed authentication domains accordingly.
+	 */
 	protected function define_rewrite_options() {
 		$url_rewrite = Setting::find( 'dms_rewrite_urls_on_mapped_page' )->get_value();
 		if ( ! empty( $url_rewrite ) ) {
@@ -62,9 +77,15 @@ class DMS_Addon_Uri_Rewriter {
 
 		$allowed_sub_domain_ids   = Setting::find( 'dms_subdomain_authentication_mappings' )->get_value();
 		$allowed_alias_domain_ids = Setting::find( 'dms_alias_domain_authentication_mappings' )->get_value();
-		$this->auth_domains       = array_intersect( $allowed_sub_domain_ids, $allowed_alias_domain_ids );
+		$this->auth_domains       = array_merge( $allowed_sub_domain_ids, $allowed_alias_domain_ids );
 	}
 
+	/**
+	 * Prepare filters for URL rewriting
+	 *
+	 * This method adds various filters to rewrite URLs in WordPress, ensuring that they are correctly mapped
+	 * to the current domain and path as per the Domain Mapping System settings.
+	 */
 	public function prepare_filters() {
 		add_filter( 'includes_url', [ $this, 'rewrite_urls' ], 999999, 2 );
 		add_filter( 'plugins_url', [ $this, 'rewrite_urls' ], 999999, 3 );
@@ -157,6 +178,4 @@ class DMS_Addon_Uri_Rewriter {
 
 		return apply_filters( 'dms_rewritten_url', $link, $this->rewrite_scenario );
 	}
-
-
 }
