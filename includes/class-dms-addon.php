@@ -38,6 +38,17 @@ class DMS_Addon {
 	 * Initialize the DMS_Addon.
 	 */
 	protected function init(): void {
-		DMS_Addon_Uri_Rewriter::get_instance();
+		try {
+			DMS_Addon_Uri_Rewriter::get_instance();
+			self::log_debug( 'DMS_Addon_Uri_Rewriter initialized successfully.' );
+		} catch ( \Throwable $e ) {
+			self::log_debug( 'Failed to initialize DMS_Addon_Uri_Rewriter: ' . $e->getMessage() );
+		}
+	}
+
+	protected static function log_debug( string $message ): void {
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log( '[DMS ADDON] ' . $message );
+		}
 	}
 }

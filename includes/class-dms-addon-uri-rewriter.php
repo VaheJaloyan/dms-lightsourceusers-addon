@@ -54,8 +54,11 @@ class DMS_Addon_Uri_Rewriter {
 	 * It is called during the initialization of the DMS_Addon_Uri_Rewriter class.
 	 */
 	protected function rewrite_const_urls(): void {
-		if ( class_exists( 'BuddyPress' ) ) {
-			\BuddyPress::instance()->plugin_url = $this->rewrite_url( \BuddyPress::instance()->plugin_url );
+		if ( class_exists( 'BuddyPress' ) && method_exists( 'BuddyPress', 'instance' ) ) {
+			$bp = \BuddyPress::instance();
+			if ( isset( $bp->plugin_url ) ) {
+				$bp->plugin_url = $this->rewrite_url( $bp->plugin_url );
+			}
 		}
 	}
 
@@ -75,9 +78,19 @@ class DMS_Addon_Uri_Rewriter {
 			] ) ? $rewrite_scenario : URI_Handler::REWRITING_GLOBAL;
 		}
 
-		$allowed_sub_domain_ids   = Setting::find( 'dms_subdomain_authentication_mappings' )->get_value();
-		$allowed_alias_domain_ids = Setting::find( 'dms_alias_domain_authentication_mappings' )->get_value();
-		$this->auth_domains       = array_merge( $allowed_sub_domain_ids, $allowed_alias_domain_ids );
+		// Always ensure array_merge gets arrays
+		$allowed_sub_domain_ids   = Setting::find( 'dms_subdomain_authentication_mappings' );
+		$allowed_alias_domain_ids = Setting::find( 'dms_alias_domain_authentication_mappings' );
+
+		$sub_domains = $allowed_sub_domain_ids && is_array( $allowed_sub_domain_ids->get_value() )
+			? $allowed_sub_domain_ids->get_value()
+			: [];
+
+		$alias_domains = $allowed_alias_domain_ids && is_array( $allowed_alias_domain_ids->get_value() )
+			? $allowed_alias_domain_ids->get_value()
+			: [];
+
+		$this->auth_domains = array_merge( $sub_domains, $alias_domains );
 	}
 
 	/**
@@ -108,7 +121,7 @@ class DMS_Addon_Uri_Rewriter {
 	 * @return string
 	 */
 	public function rewrite_urls( string $url, ?string $path = null, ?string $plugin = '' ): string {
-		return $this->rewrite_url( $url );
+		return $this->rewrite_url( $url ) ?? $url;
 	}
 
 	/**
@@ -120,7 +133,7 @@ class DMS_Addon_Uri_Rewriter {
 	 * @return string
 	 */
 	public function rewrite_urls_with_trail( string $url, ?string $path = null ): string {
-		return trim( $this->rewrite_url( $url ), '/' ) . '/';
+		return rtrim( $this->rewrite_url( $url ) ?? $url, '/' ) . '/';
 	}
 
 	/**
@@ -131,7 +144,7 @@ class DMS_Addon_Uri_Rewriter {
 	 * @return string
 	 */
 	public function rewrite_attachment_urls( string $url ): string {
-		return trim( $this->rewrite_url( $url ), '/' );
+		return trim( $this->rewrite_url( $url ) ?? $url, '/' );
 	}
 
 	/**
@@ -142,12 +155,17 @@ class DMS_Addon_Uri_Rewriter {
 	 * @return string|null
 	 */
 	public function rewrite_url( ?string $url ): ?string {
-		if ( $this->rewrite_scenario !== URI_Handler::REWRITING_GLOBAL || ! $url ) {
+		if ( empty( $url ) || $this->rewrite_scenario !== URI_Handler::REWRITING_GLOBAL ) {
+			return $url;
+		}
+
+		if ( empty( $this->request_params->domain ) || ! is_array( $this->auth_domains ) ) {
 			return $url;
 		}
 
 		$mapping = Helper::matching_mapping_from_db( $this->request_params->domain, $this->request_params->path );
-		if ( ! empty( $mapping->id ) && in_array( $mapping->id, $this->auth_domains ) ) {
+
+		if ( ! empty( $mapping ) && ! empty( $mapping->id ) && in_array( $mapping->id, $this->auth_domains, true ) ) {
 			return $this->get_rewritten_url( $mapping, $url );
 		}
 
@@ -163,11 +181,15 @@ class DMS_Addon_Uri_Rewriter {
 	 * @return string|null
 	 */
 	public function get_rewritten_url( ?Mapping $mapping, ?string $link ): ?string {
-		if ( ! $link ) {
+		if ( empty( $link ) || empty( $this->request_params->domain ) ) {
 			return $link;
 		}
 
-		$host                = parse_url( $link, PHP_URL_HOST );
+		$host = parse_url( $link, PHP_URL_HOST );
+		if ( ! $host ) {
+			return $link;
+		}
+
 		$link_without_scheme = preg_replace( "~^(https?://)~i", '', $link );
 
 		if ( ! str_starts_with( $link_without_scheme, $this->request_params->domain ) ) {
