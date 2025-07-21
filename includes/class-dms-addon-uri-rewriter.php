@@ -97,7 +97,6 @@ class DMS_Addon_Uri_Rewriter {
 	 * to the current domain and path as per the Domain Mapping System settings.
 	 */
 	public function prepare_filters() {
-		add_filter( 'tribe_events_enable_month_view_cache', '__return_false' );
 		add_filter( 'includes_url', [ $this, 'rewrite_urls' ], 999999, 2 );
 		add_filter( 'plugins_url', [ $this, 'rewrite_urls' ], 999999, 3 );
 		add_filter( 'rest_url', [ $this, 'rewrite_urls_with_trail' ], 999999, 2 );
