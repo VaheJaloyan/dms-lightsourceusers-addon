@@ -3,6 +3,8 @@
 namespace DMS_Addon\Includes;
 
 use DMS\Includes\Services\Request_Params;
+use DMS_Addon_Migration;
+use DMS_Addon_Sso_Auth;
 
 class DMS_Addon {
 	/**
@@ -39,7 +41,9 @@ class DMS_Addon {
 	 */
 	protected function init(): void {
 		try {
+//			new DMS_Addon_Migration();
 			DMS_Addon_Uri_Rewriter::get_instance();
+			DMS_Addon_Sso_Auth::get_instance();
 		} catch ( \Throwable $e ) {
 			self::log_debug( 'Failed to initialize DMS_Addon_Uri_Rewriter: ' . $e->getMessage() );
 		}

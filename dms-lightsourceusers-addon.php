@@ -5,10 +5,12 @@
  * Version:     1.0.0
  * Author:      Limb
  * Requires PHP: 8.0
- * Requires Plugins: domain-mapping-system-pro, buddyboss-platform
+ * Requires Plugins: domain-mapping-system-pro
  */
 
 defined( 'ABSPATH' ) || exit;
+
+define( 'DMS_ADDON_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // Check PHP version.
 if ( version_compare( PHP_VERSION, '8.0', '<' ) ) {
@@ -59,7 +61,10 @@ function dms_addon_lightsource_init() {
  */
 function dms_addon_lightsource_load_classes() {
 	if ( ! class_exists( 'DMS_Addon\Includes\DMS_Addon' ) ) {
+		require_once plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon.php';
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-uri-rewriter.php';
+		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-migration.php';
+		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-sso-auth.php';
 	}
 }

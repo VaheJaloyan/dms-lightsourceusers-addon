@@ -17,6 +17,9 @@ class DMS_Addon_Uri_Rewriter {
 	 */
 	private static ?DMS_Addon_Uri_Rewriter $_instance = null;
 
+	protected ?Request_Params $request_params = null;
+	protected ?int $rewrite_scenario = null;
+
 	/**
 	 * DMS_Addon constructor.
 	 */
@@ -74,20 +77,6 @@ class DMS_Addon_Uri_Rewriter {
 				URI_Handler::REWRITING_SELECTIVE
 			] ) ? $rewrite_scenario : URI_Handler::REWRITING_GLOBAL;
 		}
-
-//		// Always ensure array_merge gets arrays
-//		$allowed_sub_domain_ids   = Setting::find( 'dms_subdomain_authentication_mappings' );
-//		$allowed_alias_domain_ids = Setting::find( 'dms_alias_domain_authentication_mappings' );
-//
-//		$sub_domains = $allowed_sub_domain_ids && is_array( $allowed_sub_domain_ids->get_value() )
-//			? $allowed_sub_domain_ids->get_value()
-//			: [];
-//
-//		$alias_domains = $allowed_alias_domain_ids && is_array( $allowed_alias_domain_ids->get_value() )
-//			? $allowed_alias_domain_ids->get_value()
-//			: [];
-//
-//		$this->auth_domains = array_merge( $sub_domains, $alias_domains );
 	}
 
 	/**
