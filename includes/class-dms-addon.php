@@ -3,7 +3,6 @@
 namespace DMS_Addon\Includes;
 
 use DMS\Includes\Services\Request_Params;
-use DMS_Addon_Migration;
 use DMS_Addon_Sso_Auth;
 
 class DMS_Addon {

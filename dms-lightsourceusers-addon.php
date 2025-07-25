@@ -65,14 +65,6 @@ function dms_addon_lightsource_load_classes() {
 		require_once plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon.php';
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-uri-rewriter.php';
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-migration.php';
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-sso-auth.php';
 	}
 }
-
-
-add_action( 'init', function () {
-	error_log( 'is_user_logged_in(): ' . ( is_user_logged_in() ? 'YES' : 'NO' ) );
-	$user = wp_get_current_user();
-	error_log( 'Current user: ' . $user->user_login );
-} );

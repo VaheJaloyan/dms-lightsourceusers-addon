@@ -77,6 +77,12 @@ class DMS_Addon_Sso_Auth {
 			'callback'            => [ $this, 'verify_token' ],
 			'permission_callback' => '__return_true',
 		] );
+
+		register_rest_route( 'dms-addon-sso/v1', '/logout', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'logout' ],
+			'permission_callback' => '__return_true', // Add nonce/auth as needed
+		] );
 	}
 
 	public function enqueue_scripts() {
@@ -248,6 +254,17 @@ class DMS_Addon_Sso_Auth {
 				'username' => $user->user_login,
 				'email'    => $user->user_email,
 			],
+		] );
+	}
+
+	public function logout() {
+		wp_logout();
+
+		// Clear any custom tokens or session data if needed
+
+		return new WP_REST_Response( [
+			'success' => true,
+			'message' => 'Logged out successfully',
 		] );
 	}
 }

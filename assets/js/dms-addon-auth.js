@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
-
+        const action = ''
         const popupWidth = 500;
         const popupHeight = 600;
         const left = window.screenX + (window.outerWidth - popupWidth) / 2;
@@ -38,8 +38,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     popupUrl.searchParams.set('token', data.token);
                     popupUrl.searchParams.set('redirect_url', redirectUrl);
+                popupUrl.searchParams.set('action', 'login');
 
-                    // Now redirect the opened popup
                     popupWindow.location.href = popupUrl.toString();
 
                 } else {
@@ -52,5 +52,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 popupWindow.document.write(`<p style="font-family:sans-serif;">Login request failed. Please try again.</p>`);
                 popupWindow.document.close();
             });
+    });
+
+    // Handle logout (trigger this manually or on logout page)
+    window.addEventListener('logout', () => {
+        const popupUrl = new URL(cdaSettings.authPopup);
+        cdaSettings.host_list.forEach(function (host) {
+            popupUrl.searchParams.append('host[]', host);
+        });
+        popupUrl.searchParams.set('action', 'logout');
+
+        const popupWidth = 500;
+        const popupHeight = 600;
+        const left = window.screenX + (window.outerWidth - popupWidth) / 2;
+        const top = window.screenY + (window.outerHeight - popupHeight) / 2;
+        const popupFeatures = `width=${popupWidth},height=${popupHeight},left=${left},top=${top},menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes,status=no`;
+
+        const popupWindow = window.open(popupUrl.toString(), 'ssoLogoutPopup', popupFeatures);
+        if (!popupWindow) {
+            alert('Popup blocked. Please allow popups for this site.');
+        }
     });
 });
