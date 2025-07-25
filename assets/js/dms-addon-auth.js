@@ -10,7 +10,6 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('submit', function (e) {
         e.preventDefault();
 
-        // 🟢 OPEN POPUP IMMEDIATELY — browser allows this
         const popupWidth = 500;
         const popupHeight = 600;
         const left = window.screenX + (window.outerWidth - popupWidth) / 2;
