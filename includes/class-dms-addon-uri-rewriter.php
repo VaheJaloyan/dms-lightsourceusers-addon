@@ -117,7 +117,7 @@ class DMS_Addon_Uri_Rewriter {
 	}
 
 	public function rewrite_urls_asset( string $url, ?string $path = null, ?string $plugin = '' ): string {
-		$base_host = $this->request_params->get_base_host();
+		$base_host   = $this->request_params->get_base_host();
 		$parsed_host = parse_url( $url, PHP_URL_HOST );
 
 		// If the URL doesn't contain the base host, skip rewriting
@@ -215,8 +215,9 @@ class DMS_Addon_Uri_Rewriter {
 		return apply_filters( 'dms_rewritten_url', $link, $this->rewrite_scenario );
 	}
 
-	public function normalize_start_url ($url, $scenario = null): string {
+	public function normalize_start_url( $url, $scenario = null ): string {
 		$url = ltrim( $url, '/' );
+
 		return $url;
 	}
 }

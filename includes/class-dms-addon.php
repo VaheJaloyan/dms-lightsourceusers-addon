@@ -41,7 +41,6 @@ class DMS_Addon {
 	 */
 	protected function init(): void {
 		try {
-//			new DMS_Addon_Migration();
 			DMS_Addon_Uri_Rewriter::get_instance();
 			DMS_Addon_Sso_Auth::get_instance();
 		} catch ( \Throwable $e ) {

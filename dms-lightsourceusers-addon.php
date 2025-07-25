@@ -10,7 +10,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'DMS_ADDON_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'DMS_ADDON_PLUGIN_URL', 'wp-content/plugins/dms-lightsourceusers-addon/' );
+define( 'DMS_ADDON_AUTH_SECRET', 'B67FCEBD-1789-4E38-84A2-B31DAA72513E' );
 
 // Check PHP version.
 if ( version_compare( PHP_VERSION, '8.0', '<' ) ) {
@@ -68,3 +69,10 @@ function dms_addon_lightsource_load_classes() {
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-sso-auth.php';
 	}
 }
+
+
+add_action( 'init', function () {
+	error_log( 'is_user_logged_in(): ' . ( is_user_logged_in() ? 'YES' : 'NO' ) );
+	$user = wp_get_current_user();
+	error_log( 'Current user: ' . $user->user_login );
+} );

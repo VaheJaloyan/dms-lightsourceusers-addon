@@ -1,57 +1,57 @@
 document.addEventListener('DOMContentLoaded', function () {
-    const iframe = document.createElement('iframe');
-    iframe.src = cdaSettings.iframeUrl;
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
+    const form = document.querySelector('#loginform');
+    const submitBtn = document.getElementById('wp-submit');
 
-    iframe.onload = function () {
-        if (document.cookie.includes('wordpress_logged_in')) {
-            fetch(cdaSettings.ajaxUrl + '/generate-token', {
-                method: 'GET',
-                headers: { 'X-WP-Nonce': cdaSettings.nonce }
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        iframe.contentWindow.postMessage({
-                            action: 'storeToken',
-                            token: data.token
-                        }, 'https://' + cdaSettings.domain);
-                    }
-                });
-        } else {
-            iframe.contentWindow.postMessage({ action: 'getToken' }, 'https://' + cdaSettings.domain);
+    const redirectInput = form.querySelector('input[name="redirect_to"]');
+    const redirectUrl = redirectInput ? redirectInput.value : '/';
+
+    if (!form || !submitBtn || !window.cdaSettings || !cdaSettings.authPopup) return;
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        // 🟢 OPEN POPUP IMMEDIATELY — browser allows this
+        const popupWidth = 500;
+        const popupHeight = 600;
+        const left = window.screenX + (window.outerWidth - popupWidth) / 2;
+        const top = window.screenY + (window.outerHeight - popupHeight) / 2;
+        const popupFeatures = `width=${popupWidth},height=${popupHeight},left=${left},top=${top},menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes,status=no`;
+
+        const popupWindow = window.open('', 'ssoPopup', popupFeatures);
+
+        if (!popupWindow) {
+            alert('Popup blocked. Please allow popups for this site.');
+            return;
         }
-    };
 
-    window.addEventListener('message', function (event) {
-        if (event.origin !== 'https://' + cdaSettings.domain) return;
+        // Send login request
+        fetch('/wp-json/dms-addon-sso/v1/login', {
+            method: 'POST',
+            body: new FormData(form)
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const popupUrl = new URL(cdaSettings.authPopup);
+                    cdaSettings.host_list.forEach(function (host) {
+                        popupUrl.searchParams.append('host[]', host);
+                    });
 
-        const { action, token, success } = event.data;
-        if (action === 'tokenResponse' && token) {
-            fetch(cdaSettings.ajaxUrl + '/verify-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token })
+                    popupUrl.searchParams.set('token', data.token);
+                    popupUrl.searchParams.set('redirect_url', redirectUrl);
+
+                    // Now redirect the opened popup
+                    popupWindow.location.href = popupUrl.toString();
+
+                } else {
+                    popupWindow.document.write(`<p style="font-family:sans-serif;">Login failed: ${data.message || 'Unknown error'}</p>`);
+                    popupWindow.document.close();
+                }
             })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        location.reload();
-                    }
-                });
-        } else if (action === 'tokenCleared') {
-            fetch(wpApiSettings.root + 'wp/v2/users/me/logout', {
-                method: 'POST',
-                headers: { 'X-WP-Nonce': cdaSettings.nonce }
+            .catch((err) => {
+                console.error('Login request failed:', err);
+                popupWindow.document.write(`<p style="font-family:sans-serif;">Login request failed. Please try again.</p>`);
+                popupWindow.document.close();
             });
-        }
-    });
-
-    document.addEventListener('click', function (event) {
-        if (event.target.closest('a[href*="wp-login.php?action=logout"]')) {
-            const iframe = document.querySelector('iframe[src="' + cdaSettings.iframeUrl + '"]');
-            iframe.contentWindow.postMessage({ action: 'clearToken' }, 'https://' + cdaSettings.domain);
-        }
     });
 });
