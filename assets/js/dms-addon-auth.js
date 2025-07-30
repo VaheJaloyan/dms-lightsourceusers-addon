@@ -1,76 +1,139 @@
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.querySelector('#loginform');
-    const submitBtn = document.getElementById('wp-submit');
+    if (form) {
+        const redirectInput = form.querySelector('input[name="redirect_to"]');
+        const submitBtn = document.getElementById('wp-submit');
+        const redirectUrl = redirectInput ? redirectInput.value : '/';
 
-    const redirectInput = form.querySelector('input[name="redirect_to"]');
-    const redirectUrl = redirectInput ? redirectInput.value : '/';
+        if (!form || !submitBtn || !window.cdaSettings || !cdaSettings.authPopup) return;
 
-    if (!form || !submitBtn || !window.cdaSettings || !cdaSettings.authPopup) return;
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
 
-    form.addEventListener('submit', function (e) {
-        e.preventDefault();
-        const action = ''
-        const popupWidth = 500;
-        const popupHeight = 600;
-        const left = window.screenX + (window.outerWidth - popupWidth) / 2;
-        const top = window.screenY + (window.outerHeight - popupHeight) / 2;
-        const popupFeatures = `width=${popupWidth},height=${popupHeight},left=${left},top=${top},menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes,status=no`;
+            // Popup security configuration
+            const popupConfig = {
+                width: 500,
+                height: 600,
+                left: window.screenX + (window.outerWidth - 500) / 2,
+                top: window.screenY + (window.outerHeight - 600) / 2,
+                menubar: 'no',
+                toolbar: 'no',
+                location: 'no',
+                resizable: 'yes',
+                scrollbars: 'yes',
+                status: 'no'
+            };
 
-        const popupWindow = window.open('', 'ssoPopup', popupFeatures);
+            const popupFeatures = Object.entries(popupConfig)
+                .map(([key, value]) => `${key}=${value}`)
+                .join(',');
 
-        if (!popupWindow) {
-            alert('Popup blocked. Please allow popups for this site.');
-            return;
-        }
+            const popupWindow = window.open('', 'ssoPopup', popupFeatures);
 
-        // Send login request
-        fetch('/wp-json/dms-addon-sso/v1/login', {
-            method: 'POST',
-            body: new FormData(form)
-        })
-            .then(res => res.json())
+            if (!popupWindow) {
+                alert('Popup blocked. Please allow popups for this site.');
+                return;
+            }
+
+            // Get CSRF token from WordPress
+            const nonce = cdaSettings.nonce;
+
+            // Secure fetch request
+            fetch('/wp-json/dms-addon-sso/v1/login', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-WP-Nonce': nonce,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: new FormData(form)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
-                if (data.success) {
-                    const popupUrl = new URL(cdaSettings.authPopup);
-                    cdaSettings.host_list.forEach(function (host) {
+                if (data.success && data.token) {
+                    // Validate and sanitize URLs
+                    const popupUrl = new URL(cdaSettings.authPopup, window.location.origin);
+                    const sanitizedHosts = cdaSettings.host_list
+                        .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host));
+
+                    sanitizedHosts.forEach(host => {
                         popupUrl.searchParams.append('host[]', host);
                     });
 
+                    // Add required parameters
                     popupUrl.searchParams.set('token', data.token);
                     popupUrl.searchParams.set('redirect_url', redirectUrl);
-                popupUrl.searchParams.set('action', 'login');
+                    popupUrl.searchParams.set('action', 'login');
 
-                    popupWindow.location.href = popupUrl.toString();
-
+                    // Origin validation for popup
+                    const targetOrigin = new URL(popupUrl).origin;
+                    if (targetOrigin === window.location.origin) {
+                        popupWindow.location.href = popupUrl.toString();
+                    } else {
+                        throw new Error('Invalid target origin');
+                    }
                 } else {
-                    popupWindow.document.write(`<p style="font-family:sans-serif;">Login failed: ${data.message || 'Unknown error'}</p>`);
-                    popupWindow.document.close();
+                    throw new Error(data.message || 'Authentication failed');
                 }
             })
-            .catch((err) => {
-                console.error('Login request failed:', err);
-                popupWindow.document.write(`<p style="font-family:sans-serif;">Login request failed. Please try again.</p>`);
+            .catch((error) => {
+                console.error('Login error:', error);
+                popupWindow.document.write(`
+                    <p style="font-family:sans-serif;color:#e53e3e;padding:20px;">
+                        ${error.message || 'Authentication failed. Please try again.'}
+                    </p>
+                `);
                 popupWindow.document.close();
             });
-    });
-
-    // Handle logout (trigger this manually or on logout page)
-    window.addEventListener('logout', () => {
-        const popupUrl = new URL(cdaSettings.authPopup);
-        cdaSettings.host_list.forEach(function (host) {
-            popupUrl.searchParams.append('host[]', host);
         });
-        popupUrl.searchParams.set('action', 'logout');
+    }
 
-        const popupWidth = 500;
-        const popupHeight = 600;
-        const left = window.screenX + (window.outerWidth - popupWidth) / 2;
-        const top = window.screenY + (window.outerHeight - popupHeight) / 2;
-        const popupFeatures = `width=${popupWidth},height=${popupHeight},left=${left},top=${top},menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes,status=no`;
+    // Secure logout handling
+    const logoutLink = document.querySelector('.ab-item[role="menuitem"][href*="action=logout"]');
+    if (logoutLink) {
+        logoutLink.addEventListener('click', (e) => {
+            e.preventDefault();
 
-        const popupWindow = window.open(popupUrl.toString(), 'ssoLogoutPopup', popupFeatures);
-        if (!popupWindow) {
-            alert('Popup blocked. Please allow popups for this site.');
-        }
-    });
+            // Validate logout URL
+            const popupUrl = new URL(cdaSettings.authPopup, window.location.origin);
+            const sanitizedHosts = cdaSettings.host_list
+                .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host));
+
+            sanitizedHosts.forEach(host => {
+                popupUrl.searchParams.append('host[]', host);
+            });
+
+            // Add secure parameters
+            popupUrl.searchParams.set('action', 'logout');
+            popupUrl.searchParams.set('redirect_url', cdaSettings.logout_redirect_url);
+            popupUrl.searchParams.set('_wpnonce', cdaSettings.nonce);
+
+            const popupConfig = {
+                width: 500,
+                height: 600,
+                left: window.screenX + (window.outerWidth - 500) / 2,
+                top: window.screenY + (window.outerHeight - 600) / 2,
+                menubar: 'no',
+                toolbar: 'no',
+                location: 'no',
+                resizable: 'yes',
+                scrollbars: 'yes',
+                status: 'no'
+            };
+
+            const popupFeatures = Object.entries(popupConfig)
+                .map(([key, value]) => `${key}=${value}`)
+                .join(',');
+
+            const popupWindow = window.open(popupUrl.toString(), 'ssoLogoutPopup', popupFeatures);
+            if (!popupWindow) {
+                alert('Popup blocked. Please allow popups for this site.');
+            }
+        });
+    }
 });

@@ -48,6 +48,7 @@ class DMS_Addon_Sso_Auth {
 	protected function define_hooks() {
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
 		add_action( 'login_enqueue_scripts', [ $this, 'enqueue_login_scripts' ] );
 		add_action( 'wp_login', [ $this, 'handle_login' ], 10, 2 );
 	}
@@ -95,12 +96,15 @@ class DMS_Addon_Sso_Auth {
 		);
 
 		wp_localize_script( 'cross-domain-auth', 'cdaSettings', [
-			'ajaxUrl'   => rest_url( 'dms-addon-sso/v1' ),
-			'authPopup' => home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'auth/storage.html',
-			'domain'    => parse_url( home_url(), PHP_URL_HOST ),
-			'nonce'     => wp_create_nonce( 'wp_rest' ),
-			'logoutUrl' => wp_logout_url(),
-			'host_list' => $this->host_list,
+			'ajaxUrl'             => rest_url( 'dms-addon-sso/v1' ),
+			'authPopup'           => home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'auth/storage.html',
+			'domain'              => parse_url( home_url(), PHP_URL_HOST ),
+			'nonce'               => wp_create_nonce( 'wp_rest' ),
+			'logoutUrl'           => wp_logout_url(),
+			'host_list'           => $this->host_list,
+			'logout_redirect_url' => apply_filters( 'logout_redirect',
+				add_query_arg( [ 'loggedout' => 'true', 'wp_lang' => get_user_locale(), ], wp_login_url() ), '',
+				wp_get_current_user() ),
 		] );
 	}
 
@@ -258,14 +262,41 @@ class DMS_Addon_Sso_Auth {
 	}
 
 	public function logout() {
-		wp_logout();
+
+		wp_destroy_current_session();
+		wp_clear_auth_cookie();
+		wp_set_current_user( 0 );
 
 		// Clear any custom tokens or session data if needed
-
 		return new WP_REST_Response( [
 			'success' => true,
 			'message' => 'Logged out successfully',
 		] );
+	}
+
+	public function check_permissions(){
+		if (!$this->check_rate_limit()) {
+			return false;
+		}
+
+		return wp_verify_nonce($this->get_request_nonce(), 'wp_rest');
+	}
+
+	private function check_rate_limit() {
+		$ip = $_SERVER['REMOTE_ADDR'];
+		$transient_key = 'login_attempts_' . $ip;
+		$attempts = get_transient($transient_key) ?: 0;
+
+		if ($attempts > 5) { // Max 5 attempts
+			return false;
+		}
+
+		set_transient($transient_key, $attempts + 1, HOUR_IN_SECONDS);
+		return true;
+	}
+
+	private function get_request_nonce() {
+		return isset($_SERVER['HTTP_X_WP_NONCE']) ? $_SERVER['HTTP_X_WP_NONCE'] : '';
 	}
 }
 

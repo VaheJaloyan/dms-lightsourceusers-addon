@@ -36,69 +36,127 @@
             color: #4a5568;
         }
 
-        .redirect-note {
-            margin-top: 1.5rem;
-            font-size: 0.9rem;
-            color: #718096;
+        .error-message {
+            color: #e53e3e;
+            margin-top: 1rem;
         }
     </style>
 </head>
 <body>
 <div class="login-box">
-    <h2>🔐 Logging You In...</h2>
-    <p>You are logging in to:</p>
-    <p><strong id="current-host">...</strong></p>
-
-    <p class="redirect-note">Please wait while we securely redirect you.</p>
+    <h2 id="auth-heading">🔐 Authenticating...</h2>
+    <p id="process-message">Preparing secure connection for:</p>
+    <p><strong id="current-host"></strong></p>
+    <p id="status-message" class="redirect-note">Please wait while we complete the process...</p>
+    <p id="error-message" class="error-message"></p>
 </div>
 
 <script>
     const url = new URL(window.location.href);
-    let hosts = url.searchParams.getAll('host[]');
-    let token = url.searchParams.get('token');
-    const path = window.location.pathname;
-    const redirectMainUrl = url.searchParams.get('redirect_url');
+    const hosts = url.searchParams.getAll('host[]');
+    const action = url.searchParams.get('action');
+
+    const heading = document.getElementById('auth-heading');
+    const processMessage = document.getElementById('process-message');
+    const currentHost = document.getElementById('current-host');
+    const statusMessage = document.getElementById('status-message');
+
+    // Show current host
+    currentHost.textContent = hosts.length > 0 ? hosts[0] : window.location.hostname;
 
     // Show current host
     document.getElementById('current-host').textContent = hosts.length > 0
         ? hosts[0]
         : window.location.hostname;
 
+    // Set heading and messages based on action
+    if (action === 'logout') {
+        heading.textContent = '🔓 Logging You Out...';
+        processMessage.textContent = 'Ending your session securely for:';
+        statusMessage.textContent = 'Please wait while we log you out from all connected services...';
+    } else {
+        heading.textContent = '🔐 Logging You In...';
+        processMessage.textContent = 'Authenticating your account for:';
+        statusMessage.textContent = 'Please wait while we securely log you in...';
+    }
+
     // Start redirect
     redirectToNextHost();
 
     async function redirectToNextHost() {
-        await verifyToken(token);
+        if(action === 'login'){
+            await login(token);
 
-        if (hosts.length === 0) {
-            if (window.opener && redirectMainUrl) {
-                window.opener.location.href = redirectMainUrl;
+            if (hosts.length === 0) {
+                if (window.opener && redirectMainUrl) {
+                    window.opener.location.href = redirectMainUrl;
+                }
+
+                setTimeout(() => {
+                    window.close();
+                }, 1000);
+
+                return;
             }
 
-            setTimeout(() => {
-                window.close();
-            }, 1000);
-
-            return;
+            let targetHost = hosts.shift();
+            const redirectUrl = new URL(path, 'https://' + targetHost);
+            redirectUrl.searchParams.set('token', token);
+            redirectUrl.searchParams.set('redirect_url', redirectMainUrl);
+            redirectUrl.searchParams.set('action', action);
+            hosts.forEach(host => {
+                redirectUrl.searchParams.append('host[]', host);
+            });
+            window.location.href = redirectUrl.toString();
         }
+        else if(action === 'logout'){
+            await logout();
 
-        let targetHost = hosts.shift();
-        const redirectUrl = new URL(path, 'https://' + targetHost);
-        redirectUrl.searchParams.set('token', token);
-        redirectUrl.searchParams.set('redirect_url', redirectMainUrl);
-        hosts.forEach(host => {
-            redirectUrl.searchParams.append('host[]', host);
-        });
+            if (hosts.length === 0) {
+                if (window.opener && redirectMainUrl) {
+                    window.opener.location.href = redirectMainUrl;
+                }
 
-        window.location.href = redirectUrl.toString();
+                window.close();
+
+                return;
+            }
+
+            let targetHost = hosts.shift();
+            const redirectUrl = new URL(path, 'https://' + targetHost);
+            redirectUrl.searchParams.set('token', token);
+            redirectUrl.searchParams.set('redirect_url', redirectMainUrl);
+            redirectUrl.searchParams.set('action', action);
+            hosts.forEach(host => {
+                redirectUrl.searchParams.append('host[]', host);
+            });
+            window.location.href = redirectUrl.toString();
+        }
     }
 
-    async function verifyToken(token) {
+    async function login(token) {
         try {
             const response = await fetch('/wp-json/dms-addon-sso/v1/verify-token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token })
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                alert(data.message || 'Token verification failed.');
+            }
+        } catch (err) {
+            console.error('Verification error:', err);
+        }
+    }
+
+    async function logout() {
+        try {
+            const response = await fetch('/wp-json/dms-addon-sso/v1/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
             });
 
             const data = await response.json();
