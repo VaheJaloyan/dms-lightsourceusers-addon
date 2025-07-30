@@ -11,7 +11,7 @@
 defined( 'ABSPATH' ) || exit;
 
 define( 'DMS_ADDON_PLUGIN_URL', 'wp-content/plugins/dms-lightsourceusers-addon/' );
-define( 'DMS_ADDON_AUTH_SECRET', 'B67FCEBD-1789-4E38-84A2-B31DAA72513E' );
+define( 'DMS_JWT_SECRET_KEY', 'B67FCEBD-1789-4E38-84A2-B31DAA72513E' );
 
 // Check PHP version.
 if ( version_compare( PHP_VERSION, '8.0', '<' ) ) {
@@ -61,10 +61,14 @@ function dms_addon_lightsource_init() {
  * Load required classes for the DMS Addon.
  */
 function dms_addon_lightsource_load_classes() {
+	require_once plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
 	if ( ! class_exists( 'DMS_Addon\Includes\DMS_Addon' ) ) {
-		require_once plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon.php';
+	}
+	if ( ! class_exists( 'DMS_Addon\Includes\DMS_Addon_Uri_Rewriter' ) ) {
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-uri-rewriter.php';
+	}
+	if ( ! class_exists( 'DMS_Addon\Includes\DMS_Addon_Sso_Auth' ) ) {
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-dms-addon-sso-auth.php';
 	}
 }

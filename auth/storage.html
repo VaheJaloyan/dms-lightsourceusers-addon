@@ -55,118 +55,140 @@
     const url = new URL(window.location.href);
     const hosts = url.searchParams.getAll('host[]');
     const action = url.searchParams.get('action');
+    const token = url.searchParams.get('token');
+    const nonce = url.searchParams.get('_wpnonce');
+    const redirectMainUrl = url.searchParams.get('redirect_url');
+    const path = window.location.pathname;
 
     const heading = document.getElementById('auth-heading');
     const processMessage = document.getElementById('process-message');
     const currentHost = document.getElementById('current-host');
     const statusMessage = document.getElementById('status-message');
+    const errorMessage = document.getElementById('error-message');
 
     // Show current host
-    currentHost.textContent = hosts.length > 0 ? hosts[0] : window.location.hostname;
+    currentHost.textContent = window.location.hostname;
 
-    // Show current host
-    document.getElementById('current-host').textContent = hosts.length > 0
-        ? hosts[0]
-        : window.location.hostname;
+    // Set UI based on action
+    updateUI(action);
 
-    // Set heading and messages based on action
-    if (action === 'logout') {
-        heading.textContent = '🔓 Logging You Out...';
-        processMessage.textContent = 'Ending your session securely for:';
-        statusMessage.textContent = 'Please wait while we log you out from all connected services...';
-    } else {
-        heading.textContent = '🔐 Logging You In...';
-        processMessage.textContent = 'Authenticating your account for:';
-        statusMessage.textContent = 'Please wait while we securely log you in...';
-    }
+    // Start the auth process
+    handleAuth();
 
-    // Start redirect
-    redirectToNextHost();
-
-    async function redirectToNextHost() {
-        if(action === 'login'){
-            await login(token);
-
-            if (hosts.length === 0) {
-                if (window.opener && redirectMainUrl) {
-                    window.opener.location.href = redirectMainUrl;
-                }
-
-                setTimeout(() => {
-                    window.close();
-                }, 1000);
-
-                return;
-            }
-
-            let targetHost = hosts.shift();
-            const redirectUrl = new URL(path, 'https://' + targetHost);
-            redirectUrl.searchParams.set('token', token);
-            redirectUrl.searchParams.set('redirect_url', redirectMainUrl);
-            redirectUrl.searchParams.set('action', action);
-            hosts.forEach(host => {
-                redirectUrl.searchParams.append('host[]', host);
-            });
-            window.location.href = redirectUrl.toString();
-        }
-        else if(action === 'logout'){
-            await logout();
-
-            if (hosts.length === 0) {
-                if (window.opener && redirectMainUrl) {
-                    window.opener.location.href = redirectMainUrl;
-                }
-
-                window.close();
-
-                return;
-            }
-
-            let targetHost = hosts.shift();
-            const redirectUrl = new URL(path, 'https://' + targetHost);
-            redirectUrl.searchParams.set('token', token);
-            redirectUrl.searchParams.set('redirect_url', redirectMainUrl);
-            redirectUrl.searchParams.set('action', action);
-            hosts.forEach(host => {
-                redirectUrl.searchParams.append('host[]', host);
-            });
-            window.location.href = redirectUrl.toString();
+    function updateUI(action) {
+        if (action === 'logout') {
+            heading.textContent = '🔓 Logging You Out...';
+            processMessage.textContent = 'Ending your session securely for:';
+            statusMessage.textContent = 'Please wait while we log you out from all connected services...';
+        } else {
+            heading.textContent = '🔐 Logging You In...';
+            processMessage.textContent = 'Authenticating your account for:';
+            statusMessage.textContent = 'Please wait while we securely log you in...';
         }
     }
 
-    async function login(token) {
+    async function handleAuth() {
         try {
-            const response = await fetch('/wp-json/dms-addon-sso/v1/verify-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token })
-            });
-
-            const data = await response.json();
-
-            if (!data.success) {
-                alert(data.message || 'Token verification failed.');
+            if (action === 'login') {
+                await login();
+            } else if (action === 'logout') {
+                await logout();
             }
-        } catch (err) {
-            console.error('Verification error:', err);
+
+            await redirectToNextHost();
+        } catch (error) {
+            handleError(error);
+        }
+    }
+
+    async function login() {
+        if (!token) {
+            throw new Error('No authentication token provided');
+        }
+
+        const response = await fetch('/wp-json/dms-addon-sso/v1/verify-token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': nonce,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({token})
+        });
+
+        if (!response.ok) {
+            throw new Error('Token verification failed');
+        }
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Authentication failed');
         }
     }
 
     async function logout() {
-        try {
-            const response = await fetch('/wp-json/dms-addon-sso/v1/logout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            });
+        const response = await fetch('/wp-json/dms-addon-sso/v1/logout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': nonce,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin'
+        });
 
-            const data = await response.json();
-
-            if (!data.success) {
-                alert(data.message || 'Token verification failed.');
-            }
-        } catch (err) {
-            console.error('Verification error:', err);
+        if (!response.ok) {
+            throw new Error('Logout failed');
         }
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Logout failed');
+        }
+    }
+
+    async function redirectToNextHost() {
+        if (hosts.length === 0) {
+            if (window.opener && redirectMainUrl) {
+                window.opener.location.href = redirectMainUrl;
+            }
+            setTimeout(() => window.close(), 1000);
+            return;
+        }
+
+        const targetHost = hosts.shift();
+        if (!isValidHost(targetHost)) {
+            throw new Error('Invalid host');
+        }
+
+        const redirectUrl = new URL(path, `https://${targetHost}`);
+        redirectUrl.searchParams.set('action', action);
+        redirectUrl.searchParams.set('_wpnonce', nonce);
+        redirectUrl.searchParams.set('redirect_url', redirectMainUrl);
+
+        if (token) {
+            redirectUrl.searchParams.set('token', token);
+        }
+
+        hosts.forEach(host => {
+            if (isValidHost(host)) {
+                redirectUrl.searchParams.append('host[]', host);
+            }
+        });
+
+        window.location.href = redirectUrl.toString();
+    }
+
+    function isValidHost(host) {
+        return /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host);
+    }
+
+    function handleError(error) {
+        console.error('Authentication error:', error);
+        errorMessage.textContent = error.message || 'An error occurred during authentication';
+        statusMessage.textContent = 'Authentication failed. This window will close shortly...';
+        setTimeout(() => window.close(), 3000);
     }
 </script>
 </body>

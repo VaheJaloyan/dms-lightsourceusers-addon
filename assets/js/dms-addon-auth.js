@@ -7,10 +7,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (!form || !submitBtn || !window.cdaSettings || !cdaSettings.authPopup) return;
 
-        form.addEventListener('submit', function (e) {
+        form.addEventListener('submit', async function (e) {
             e.preventDefault();
 
-            // Popup security configuration
+            // Enhanced popup security configuration
             const popupConfig = {
                 width: 500,
                 height: 600,
@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 location: 'no',
                 resizable: 'yes',
                 scrollbars: 'yes',
-                status: 'no'
+                status: 'no',
+                'strict-origin-when-cross-origin': 'yes'
             };
 
             const popupFeatures = Object.entries(popupConfig)
@@ -31,48 +32,47 @@ document.addEventListener('DOMContentLoaded', function () {
             const popupWindow = window.open('', 'ssoPopup', popupFeatures);
 
             if (!popupWindow) {
-                alert('Popup blocked. Please allow popups for this site.');
+                console.error('Popup blocked');
                 return;
             }
 
-            // Get CSRF token from WordPress
-            const nonce = cdaSettings.nonce;
+            try {
+                const formData = new FormData(form);
+                const loginResponse = await fetch(`${cdaSettings.ajaxUrl}login`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-WP-Nonce': cdaSettings.nonce,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: formData
+                });
 
-            // Secure fetch request
-            fetch('/wp-json/dms-addon-sso/v1/login', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'X-WP-Nonce': nonce,
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: new FormData(form)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
+                if (!loginResponse.ok) {
+                    throw new Error('Network response failed');
                 }
-                return response.json();
-            })
-            .then(data => {
+
+                const data = await loginResponse.json();
+
                 if (data.success && data.token) {
                     // Validate and sanitize URLs
                     const popupUrl = new URL(cdaSettings.authPopup, window.location.origin);
                     const sanitizedHosts = cdaSettings.host_list
                         .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host));
 
-                    sanitizedHosts.forEach(host => {
-                        popupUrl.searchParams.append('host[]', host);
-                    });
-
                     // Add required parameters
                     popupUrl.searchParams.set('token', data.token);
                     popupUrl.searchParams.set('redirect_url', redirectUrl);
                     popupUrl.searchParams.set('action', 'login');
+                    popupUrl.searchParams.set('_wpnonce', cdaSettings.nonce);
 
-                    // Origin validation for popup
-                    const targetOrigin = new URL(popupUrl).origin;
-                    if (targetOrigin === window.location.origin) {
+                    // Add sanitized hosts
+                    sanitizedHosts.forEach(host => {
+                        popupUrl.searchParams.append('host[]', host);
+                    });
+
+                    // Validate target origin
+                    if (new URL(popupUrl).origin === window.location.origin) {
                         popupWindow.location.href = popupUrl.toString();
                     } else {
                         throw new Error('Invalid target origin');
@@ -80,59 +80,65 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else {
                     throw new Error(data.message || 'Authentication failed');
                 }
-            })
-            .catch((error) => {
+            } catch (error) {
                 console.error('Login error:', error);
                 popupWindow.document.write(`
-                    <p style="font-family:sans-serif;color:#e53e3e;padding:20px;">
-                        ${error.message || 'Authentication failed. Please try again.'}
-                    </p>
+                    <div style="font-family:sans-serif;color:#e53e3e;padding:20px;">
+                        <p>${error.message || 'Authentication failed. Please try again.'}</p>
+                        <button onclick="window.close()">Close</button>
+                    </div>
                 `);
                 popupWindow.document.close();
-            });
+            }
         });
     }
 
-    // Secure logout handling
+    // Enhanced logout handling
     const logoutLink = document.querySelector('.ab-item[role="menuitem"][href*="action=logout"]');
     if (logoutLink) {
-        logoutLink.addEventListener('click', (e) => {
+        logoutLink.addEventListener('click', async (e) => {
             e.preventDefault();
 
-            // Validate logout URL
-            const popupUrl = new URL(cdaSettings.authPopup, window.location.origin);
-            const sanitizedHosts = cdaSettings.host_list
-                .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host));
+            try {
+                // Validate popup URL
+                const popupUrl = new URL(cdaSettings.authPopup, window.location.origin);
+                const sanitizedHosts = cdaSettings.host_list
+                    .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host));
 
-            sanitizedHosts.forEach(host => {
-                popupUrl.searchParams.append('host[]', host);
-            });
+                // Add secure parameters
+                popupUrl.searchParams.set('action', 'logout');
+                popupUrl.searchParams.set('redirect_url', cdaSettings.logout_redirect_url);
+                popupUrl.searchParams.set('_wpnonce', cdaSettings.nonce);
 
-            // Add secure parameters
-            popupUrl.searchParams.set('action', 'logout');
-            popupUrl.searchParams.set('redirect_url', cdaSettings.logout_redirect_url);
-            popupUrl.searchParams.set('_wpnonce', cdaSettings.nonce);
+                // Add sanitized hosts
+                sanitizedHosts.forEach(host => {
+                    popupUrl.searchParams.append('host[]', host);
+                });
 
-            const popupConfig = {
-                width: 500,
-                height: 600,
-                left: window.screenX + (window.outerWidth - 500) / 2,
-                top: window.screenY + (window.outerHeight - 600) / 2,
-                menubar: 'no',
-                toolbar: 'no',
-                location: 'no',
-                resizable: 'yes',
-                scrollbars: 'yes',
-                status: 'no'
-            };
+                const popupConfig = {
+                    width: 500,
+                    height: 600,
+                    left: window.screenX + (window.outerWidth - 500) / 2,
+                    top: window.screenY + (window.outerHeight - 600) / 2,
+                    menubar: 'no',
+                    toolbar: 'no',
+                    location: 'no',
+                    resizable: 'yes',
+                    scrollbars: 'yes',
+                    status: 'no',
+                    'strict-origin-when-cross-origin': 'yes'
+                };
 
-            const popupFeatures = Object.entries(popupConfig)
-                .map(([key, value]) => `${key}=${value}`)
-                .join(',');
+                const popupFeatures = Object.entries(popupConfig)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join(',');
 
-            const popupWindow = window.open(popupUrl.toString(), 'ssoLogoutPopup', popupFeatures);
-            if (!popupWindow) {
-                alert('Popup blocked. Please allow popups for this site.');
+                console.log(popupUrl.toString());
+                const popupWindow = window.open(popupUrl.toString(), 'ssoLogoutPopup', popupFeatures);
+
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert('Logout failed. Please try again.');
             }
         });
     }

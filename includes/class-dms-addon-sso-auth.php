@@ -8,15 +8,36 @@ use Firebase\JWT\Key;
 
 class DMS_Addon_Sso_Auth {
 
-	public static ?DMS_Addon_Sso_Auth $_instance = null;
-	public static $key = DMS_ADDON_AUTH_SECRET; // Temporary, to be fixed later
-	protected ?Request_Params $request_params = null;
-	public $host_list = [];
+	/**
+	 * Singleton instance of the class.
+	 *
+	 * @var DMS_Addon_Sso_Auth|null
+	 */
+	private static ?DMS_Addon_Sso_Auth $_instance = null;
+
+	/**
+	 * Request parameters instance.
+	 *
+	 * @var Request_Params|null
+	 */
+	private ?Request_Params $request_params = null;
+
+	/**
+	 * List of allowed host domains for authentication.
+	 *
+	 * @var array
+	 */
+	private array $host_list = [];
+
+	/**
+	 * Token expiry time in seconds.
+	 */
+	private const TOKEN_EXPIRY = 3600; // 1 hour
 
 	/**
 	 * Constructor.
 	 */
-	public function __construct() {
+	private function __construct() {
 		$this->request_params = new Request_Params();
 		$this->init();
 	}
@@ -37,15 +58,29 @@ class DMS_Addon_Sso_Auth {
 	/**
 	 * Initialize the class.
 	 */
-	public function init() {
+	private function init() {
 		$this->setAuthDomains();
 		$this->define_hooks();
 	}
 
 	/**
+	 * Get the encryption key for JWT.
+	 *
+	 * @return string
+	 * @throws Exception
+	 */
+	private function get_encryption_key(): string {
+		if ( ! defined( 'DMS_JWT_SECRET_KEY' ) ) {
+			throw new Exception( 'JWT secret key not configured' );
+		}
+
+		return DMS_JWT_SECRET_KEY;
+	}
+
+	/**
 	 * Define hooks for the class.
 	 */
-	protected function define_hooks() {
+	protected function define_hooks(): void {
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
@@ -56,23 +91,20 @@ class DMS_Addon_Sso_Auth {
 	/**
 	 * Register REST API routes for the addon.
 	 */
-	public function register_rest_routes() {
+	public function register_rest_routes(): void {
 		// Generate token route
 		register_rest_route( 'dms-addon-sso/v1', '/generate-token', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'generate_token' ],
-			'permission_callback' => function () {
-				return is_user_logged_in();
-			},
+			'permission_callback' => [ $this, 'check_permissions' ],
 		] );
 
 		register_rest_route( 'dms-addon-sso/v1', '/login', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'login' ],
-			'permission_callback' => '__return_true',
+			'permission_callback' => [ $this, 'check_permissions' ],
 		] );
 
-		// Verify token
 		register_rest_route( 'dms-addon-sso/v1', '/verify-token', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'verify_token' ],
@@ -82,35 +114,62 @@ class DMS_Addon_Sso_Auth {
 		register_rest_route( 'dms-addon-sso/v1', '/logout', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'logout' ],
-			'permission_callback' => '__return_true', // Add nonce/auth as needed
+			'permission_callback' => '__return_true',
 		] );
 	}
 
-	public function enqueue_scripts() {
-		wp_enqueue_script(
-			'cross-domain-auth',
-			home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'assets/js/dms-addon-auth.js',
-			[],
-			'1.0',
-			true
-		);
 
-		wp_localize_script( 'cross-domain-auth', 'cdaSettings', [
-			'ajaxUrl'             => rest_url( 'dms-addon-sso/v1' ),
-			'authPopup'           => home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'auth/storage.html',
-			'domain'              => parse_url( home_url(), PHP_URL_HOST ),
-			'nonce'               => wp_create_nonce( 'wp_rest' ),
-			'logoutUrl'           => wp_logout_url(),
-			'host_list'           => $this->host_list,
-			'logout_redirect_url' => apply_filters( 'logout_redirect',
-				add_query_arg( [ 'loggedout' => 'true', 'wp_lang' => get_user_locale(), ], wp_login_url() ), '',
-				wp_get_current_user() ),
-		] );
+	/**
+	 * Enqueue Scripts
+	 * @return void
+	 */
+	public function enqueue_scripts(): void {
+		if ( ! wp_script_is( 'cross-domain-auth', 'registered' ) ) {
+			wp_register_script(
+				'cross-domain-auth',
+				esc_url( home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'assets/js/dms-addon-auth.js' ),
+				[],
+				'1.0',
+				true
+			);
+
+			wp_localize_script( 'cross-domain-auth', 'cdaSettings', [
+				'ajaxUrl'             => esc_url_raw( rest_url( 'dms-addon-sso/v1' ) ),
+				'authPopup'           => esc_url( home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'auth/storage.html' ),
+				'domain'              => esc_js( parse_url( home_url(), PHP_URL_HOST ) ),
+				'nonce'               => wp_create_nonce( 'wp_rest' ),
+				'host_list'           => array_map( 'esc_js', $this->host_list ),
+				'logout_redirect_url' => wp_sanitize_redirect( $this->get_logout_redirect_url() ),
+			] );
+
+			wp_enqueue_script( 'cross-domain-auth' );
+		}
 	}
 
+	/**
+	 * Enqueue Scripts
+	 * Alias for enqueue_scripts for load scripts on login page
+	 * @return void
+	 */
 	public function enqueue_login_scripts() {
 		$this->enqueue_scripts();
 	}
+
+	/**
+	 * Get Redirect URL after logout
+	 * @return string
+	 */
+	private function get_logout_redirect_url(): string {
+		return apply_filters( 'logout_redirect',
+			add_query_arg( [
+				'loggedout' => 'true',
+				'wp_lang'   => get_user_locale(),
+			], wp_login_url() ),
+			'',
+			wp_get_current_user()
+		);
+	}
+
 
 	/**
 	 * Generate a JWT token for the current user.
@@ -119,21 +178,48 @@ class DMS_Addon_Sso_Auth {
 	 *
 	 * @return WP_REST_Response
 	 */
-	public function generate_token( WP_REST_Request $request ) {
-		$user = wp_get_current_user();
-		if ( ! $user->ID ) {
-			return new WP_REST_Response( [ 'success' => false, 'error' => 'Not logged in' ], 401 );
-		}
+	public function generate_token( WP_REST_Request $request ): WP_REST_Response {
+		try {
+			if ( ! is_user_logged_in() ) {
+				throw new Exception( 'User not logged in' );
+			}
 
+			$user  = wp_get_current_user();
+			$token = $this->create_jwt_token( $user );
+
+			return new WP_REST_Response( [
+				'success' => true,
+				'token'   => $token,
+			], 200 );
+		} catch ( Exception $e ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => $e->getMessage()
+			], 401 );
+		}
+	}
+
+	/**
+	 * Create a JWT token for the user.
+	 *
+	 * @param  WP_User  $user  The user object.
+	 *
+	 * @return string
+	 * @throws Exception
+	 */
+	private function create_jwt_token( WP_User $user ): string {
 		$payload = [
-			'sub' => $user->ID,
-			'iat' => time(),
-			'exp' => time() + 3600, // 1 hour expiration
+			'sub'        => $user->ID,
+			'iat'        => time(),
+			'exp'        => time() + self::TOKEN_EXPIRY,
+			'jti'        => wp_generate_uuid4(),
+			'iss'        => site_url(),
+			'ip'         => $_SERVER['REMOTE_ADDR'],
+			'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+			'nonce'      => wp_create_nonce( 'jwt_auth' )
 		];
 
-		$token = JWT::encode( $payload, self::$key, 'HS256' );
-
-		return new WP_REST_Response( [ 'success' => true, 'token' => $token ], 200 );
+		return JWT::encode( $payload, $this->get_encryption_key(), 'HS512' );
 	}
 
 	/**
@@ -143,160 +229,251 @@ class DMS_Addon_Sso_Auth {
 	 *
 	 * @return WP_REST_Response
 	 */
-	public function verify_token( WP_REST_Request $request ) {
-		$params = $request->get_json_params();
-		$token  = $params['token'] ?? null;
+	public function verify_token( WP_REST_Request $request ): WP_REST_Response {
 		try {
-			$decoded = JWT::decode( $token, new Key( self::$key, 'HS256' ) );
+			$params = $request->get_json_params();
+			$token  = $params['token'] ?? null;
 
-			$user_id = $decoded->sub;
-
-			$user = get_user_by( 'id', $user_id );
-			if ( $user ) {
-				wp_set_current_user( $user_id );
-				wp_set_auth_cookie( $user_id, true, is_ssl() );
-
-				return new WP_REST_Response( [ 'success' => true, 'user_id' => $user->id ], 200 );
+			if ( ! $token ) {
+				throw new Exception( 'Token not provided' );
 			}
 
-			return new WP_REST_Response( [ 'success' => false, 'error' => 'Invalid user' ], 401 );
+			$decoded = $this->validate_token( $token );
+			$user    = $this->authenticate_user( $decoded->sub );
+
+			return new WP_REST_Response( [
+				'success' => true,
+				'user_id' => $user->ID
+			], 200 );
 		} catch ( Exception $e ) {
-			return new WP_REST_Response( [ 'success' => false, 'error' => 'Invalid token' ], 401 );
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => $e->getMessage()
+			], 401 );
 		}
 	}
 
 	/**
-	 * Handle user login to generate a token.
+	 * Validate the JWT token.
 	 *
-	 * @param  string  $user_login  The username of the user logging in.
-	 * @param  WP_User  $user  The WP_User object of the user logging in.
+	 * @param  string  $token  The JWT token.
+	 *
+	 * @return object
+	 * @throws Exception
 	 */
-	public function handle_login( $user_login, $user ) {
-		wp_remote_get( rest_url( 'dms-addon-sso/v1/generate-token' ) );
+	private function validate_token( string $token ): object {
+		$decoded = JWT::decode( $token, new Key( $this->get_encryption_key(), 'HS512' ) );
+
+		if ( $decoded->exp < time() ) {
+			throw new Exception( 'Token expired' );
+		}
+
+		if ( $decoded->ip !== $_SERVER['REMOTE_ADDR'] ) {
+			throw new Exception( 'Invalid token origin' );
+		}
+
+		return $decoded;
 	}
 
-	public function setAuthDomains() {
-		$auth_alias_mapping_ids = Setting::find( 'dms_alias_domain_authentication_mappings' )->get_value();
-		$auth_sub_mapping_ids   = Setting::find( 'dms_subdomain_authentication_mappings' )->get_value();
-		if ( ! empty( $auth_alias_mapping_ids ) ) {
-			$mappings_alias = Mapping::where( [ 'id' => $auth_alias_mapping_ids ] );
-			foreach ( $mappings_alias as $mapping ) {
-				$this->host_list[] = $mapping->host;
+	/**
+	 * Authenticate the user based on the user ID.
+	 *
+	 * @param  int  $user_id  The user ID.
+	 *
+	 * @return WP_User
+	 * @throws Exception
+	 */
+	private function authenticate_user( int $user_id ): WP_User {
+		$user = get_user_by( 'id', $user_id );
+		if ( ! $user ) {
+			throw new Exception( 'Invalid user' );
+		}
+
+		wp_set_current_user( $user_id );
+		wp_set_auth_cookie( $user_id, true, is_ssl() );
+		$this->create_secure_session();
+
+		return $user;
+	}
+
+	/**
+	 * Create a secure session for the user.
+	 *
+	 * This method sets secure cookie parameters and starts a session if not already started.
+	 */
+	private function create_secure_session(): void {
+		if ( ! session_id() ) {
+			session_set_cookie_params( [
+				'lifetime' => 0,
+				'path'     => '/',
+				'domain'   => $_SERVER['HTTP_HOST'],
+				'secure'   => true,
+				'httponly' => true,
+				'samesite' => 'Strict'
+			] );
+			session_start();
+		}
+	}
+
+	/**
+	 * Handle user login.
+	 *
+	 * @param  WP_REST_Request  $request  The REST request object.
+	 *
+	 * @return WP_REST_Response
+	 * @throws Exception
+	 */
+	public function login( WP_REST_Request $request ): WP_REST_Response {
+		try {
+//			if ( ! $this->check_rate_limit() ) {
+//				throw new Exception( 'Too many login attempts' );
+//			}
+
+			$credentials = $this->validate_login_credentials( $request );
+			$user        = wp_authenticate( $credentials['username'], $credentials['password'] );
+
+			if ( is_wp_error( $user ) ) {
+				throw new Exception( 'Invalid login credentials' );
 			}
-		}
-		if ( ! empty( $auth_sub_mapping_ids ) ) {
-			$mappings_sub = Mapping::where( [ 'id' => $auth_sub_mapping_ids ] );
 
-			foreach ( $mappings_sub as $mapping ) {
-				$this->host_list[] = $mapping->host;
-			}
-		}
-		$this->host_list[] = $this->request_params->base_host;
-		$this->host_list[] = $this->request_params->domain;
+			$token = $this->create_jwt_token( $user );
+			$this->authenticate_user( $user->ID );
 
-		$this->host_list = array_unique( $this->host_list );
+			return new WP_REST_Response( [
+				'success' => true,
+				'token'   => $token,
+				'user'    => $this->get_safe_user_data( $user )
+			], 200 );
+		} catch ( Exception $e ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'message' => $e->getMessage()
+			], 401 );
+		}
 	}
 
-
-	public function generate_token_ajax() {
-		check_ajax_referer( 'generate_token_nonce' ); // Same nonce you pass in JS
-
-		if ( ! is_user_logged_in() ) {
-			wp_send_json_error( [ 'message' => 'User not logged in' ], 401 );
-		}
-
-		$user  = wp_get_current_user();
-		$token = wp_create_nonce( 'my_token_' . $user->ID );
-
-		wp_send_json_success( [ 'token' => $token ] );
-	}
-
-	public function login( WP_REST_Request $request ) {
-		$username = $request->get_param( 'log' );
+	/**
+	 * Validate login credentials from the request.
+	 *
+	 * @param  WP_REST_Request  $request  The REST request object.
+	 *
+	 * @return array
+	 * @throws Exception
+	 */
+	private function validate_login_credentials( WP_REST_Request $request ): array {
+		$username = sanitize_user( $request->get_param( 'log' ) );
 		$password = $request->get_param( 'pwd' );
 
 		if ( empty( $username ) || empty( $password ) ) {
-			return new WP_REST_Response( [
-				'success' => false,
-				'message' => 'Username and password are required.'
-			], 400 );
+			throw new Exception( 'Username and password are required' );
 		}
 
-		$user = wp_signon( [
-			'user_login'    => $username,
-			'user_password' => $password,
-			'remember'      => true,
-		], false );
-
-		if ( is_wp_error( $user ) ) {
-			return new WP_REST_Response( [
-				'success' => false,
-				'message' => 'Invalid login credentials.',
-			], 403 );
-		}
-
-		// Authenticate session
-		wp_set_current_user( $user->ID );
-		wp_set_auth_cookie( $user->ID, true ); // true = remember me
-
-		// Generate JWT token
-		$payload = [
-			'sub' => $user->ID,
-			'iat' => time(),
-			'exp' => time() + 3600, // 1 hour
-		];
-
-		$token = JWT::encode( $payload, self::$key, 'HS256' );
-
-		return new WP_REST_Response( [
-			'success' => true,
-			'message' => 'Login successful',
-			'nonce'   => wp_create_nonce( 'wp_rest' ),
-			'token'   => $token,
-			'user'    => [
-				'id'       => $user->ID,
-				'username' => $user->user_login,
-				'email'    => $user->user_email,
-			],
-		] );
+		return [ 'username' => $username, 'password' => $password ];
 	}
 
-	public function logout() {
+	/**
+	 * Get safe user data to return in the response.
+	 *
+	 * @param  WP_User  $user  The user object.
+	 *
+	 * @return array
+	 */
+	private function get_safe_user_data( WP_User $user ): array {
+		return [
+			'id'       => $user->ID,
+			'username' => $user->user_login,
+			'email'    => $user->user_email,
+		];
+	}
 
+	/**
+	 * Handle user logout.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function logout(): WP_REST_Response {
 		wp_destroy_current_session();
 		wp_clear_auth_cookie();
 		wp_set_current_user( 0 );
 
-		// Clear any custom tokens or session data if needed
+		if ( session_id() ) {
+			session_destroy();
+		}
+
 		return new WP_REST_Response( [
 			'success' => true,
-			'message' => 'Logged out successfully',
-		] );
+			'message' => 'Logged out successfully'
+		], 200 );
 	}
 
-	public function check_permissions(){
-		if (!$this->check_rate_limit()) {
-			return false;
+	/**
+	 * Check if the request has valid permissions.
+	 *
+	 * @return bool
+	 */
+	public function check_permissions(): bool {
+		return wp_verify_nonce( $this->get_request_nonce(), 'wp_rest' ) &&
+		       $this->validate_request_origin();
+	}
+
+	/**
+	 * Validate the request origin against the allowed host list.
+	 *
+	 * @return bool
+	 */
+	private function validate_request_origin(): bool {
+		$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+		return empty( $origin ) || in_array( parse_url( $origin, PHP_URL_HOST ), $this->host_list, true );
+	}
+
+	/**
+	 * Get the request nonce from the headers.
+	 *
+	 * @return string
+	 */
+	private function get_request_nonce(): string {
+		return sanitize_text_field( $_SERVER['HTTP_X_WP_NONCE'] ?? '' );
+	}
+
+	/**
+	 * Set the authentication domains based on the mappings.
+	 *
+	 * This method retrieves the domains from the settings and sets them in the host list.
+	 */
+	public function setAuthDomains(): void {
+		$domains         = $this->get_auth_domains();
+		$this->host_list = array_unique( array_filter( $domains ) );
+	}
+
+	/**
+	 * Get the list of authentication domains.
+	 *
+	 * This method retrieves the domains from the settings and returns them as an array.
+	 *
+	 * @return array
+	 */
+	private function get_auth_domains(): array {
+		$domains = [];
+
+		$auth_mappings = [
+			'dms_alias_domain_authentication_mappings',
+			'dms_subdomain_authentication_mappings'
+		];
+
+		foreach ( $auth_mappings as $mapping_key ) {
+			$mapping_ids = Setting::find( $mapping_key )->get_value();
+			if ( ! empty( $mapping_ids ) ) {
+				$mappings = Mapping::where( [ 'id' => $mapping_ids ] );
+				foreach ( $mappings as $mapping ) {
+					$domains[] = $mapping->host;
+				}
+			}
 		}
 
-		return wp_verify_nonce($this->get_request_nonce(), 'wp_rest');
-	}
+		$domains[] = $this->request_params->base_host;
+		$domains[] = $this->request_params->domain;
 
-	private function check_rate_limit() {
-		$ip = $_SERVER['REMOTE_ADDR'];
-		$transient_key = 'login_attempts_' . $ip;
-		$attempts = get_transient($transient_key) ?: 0;
-
-		if ($attempts > 5) { // Max 5 attempts
-			return false;
-		}
-
-		set_transient($transient_key, $attempts + 1, HOUR_IN_SECONDS);
-		return true;
-	}
-
-	private function get_request_nonce() {
-		return isset($_SERVER['HTTP_X_WP_NONCE']) ? $_SERVER['HTTP_X_WP_NONCE'] : '';
+		return $domains;
 	}
 }
-
