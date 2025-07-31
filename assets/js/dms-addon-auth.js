@@ -11,18 +11,33 @@ document.addEventListener('DOMContentLoaded', function () {
             e.preventDefault();
 
             // Enhanced popup security configuration
+            // Build a centered popup config based on the popup's width/height
+            const popupWidth = Math.round(window.outerWidth / 2);
+            const popupHeight = Math.round(window.outerWidth / 4);
+
+            // Browser-compatible origin of the current window on the desktop
+            const originX = (typeof window.screenX !== 'undefined' ? window.screenX : window.screenLeft) || 0;
+            const originY = (typeof window.screenY !== 'undefined' ? window.screenY : window.screenTop) || 0;
+
+            // Use inner size for better results with zoom; fall back as needed
+            const frameW = window.innerWidth || document.documentElement.clientWidth || window.outerWidth || popupWidth;
+            const frameH = window.innerHeight || document.documentElement.clientHeight || window.outerHeight || popupHeight;
+
+            // Center relative to the current window
+            const left = Math.max(0, Math.round(originX + (frameW - popupWidth) / 2));
+            const top = Math.max(0, Math.round(originY + (frameH - popupHeight) / 2));
+
             const popupConfig = {
-                width: 500,
-                height: 600,
-                left: window.screenX + (window.outerWidth - 500) / 2,
-                top: window.screenY + (window.outerHeight - 600) / 2,
+                width: popupWidth,
+                height: popupHeight,
+                left,
+                top,
                 menubar: 'no',
                 toolbar: 'no',
                 location: 'no',
                 resizable: 'yes',
                 scrollbars: 'yes',
-                status: 'no',
-                'strict-origin-when-cross-origin': 'yes'
+                status: 'no'
             };
 
             const popupFeatures = Object.entries(popupConfig)
@@ -35,6 +50,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.error('Popup blocked');
                 return;
             }
+
 
             try {
                 const formData = new FormData(form);
@@ -115,18 +131,33 @@ document.addEventListener('DOMContentLoaded', function () {
                     popupUrl.searchParams.append('host[]', host);
                 });
 
+                // Build a centered popup config based on the popup's width/height
+                const popupWidth = Math.round(window.outerWidth / 2);
+                const popupHeight = Math.round(window.outerWidth / 4);
+
+                // Browser-compatible origin of the current window on the desktop
+                const originX = (typeof window.screenX !== 'undefined' ? window.screenX : window.screenLeft) || 0;
+                const originY = (typeof window.screenY !== 'undefined' ? window.screenY : window.screenTop) || 0;
+
+                // Use inner size for better results with zoom; fall back as needed
+                const frameW = window.innerWidth || document.documentElement.clientWidth || window.outerWidth || popupWidth;
+                const frameH = window.innerHeight || document.documentElement.clientHeight || window.outerHeight || popupHeight;
+
+                // Center relative to the current window
+                const left = Math.max(0, Math.round(originX + (frameW - popupWidth) / 2));
+                const top = Math.max(0, Math.round(originY + (frameH - popupHeight) / 2));
+
                 const popupConfig = {
-                    width: 500,
-                    height: 600,
-                    left: window.screenX + (window.outerWidth - 500) / 2,
-                    top: window.screenY + (window.outerHeight - 600) / 2,
+                    width: popupWidth,
+                    height: popupHeight,
+                    left,
+                    top,
                     menubar: 'no',
                     toolbar: 'no',
                     location: 'no',
                     resizable: 'yes',
                     scrollbars: 'yes',
-                    status: 'no',
-                    'strict-origin-when-cross-origin': 'yes'
+                    status: 'no'
                 };
 
                 const popupFeatures = Object.entries(popupConfig)

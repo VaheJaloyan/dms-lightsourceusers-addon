@@ -110,8 +110,6 @@
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-WP-Nonce': nonce,
-                'X-Requested-With': 'XMLHttpRequest'
             },
             credentials: 'same-origin',
             body: JSON.stringify({token})
@@ -132,8 +130,6 @@
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-WP-Nonce': nonce,
-                'X-Requested-With': 'XMLHttpRequest'
             },
             credentials: 'same-origin'
         });
@@ -190,6 +186,7 @@
         statusMessage.textContent = 'Authentication failed. This window will close shortly...';
         setTimeout(() => window.close(), 3000);
     }
+
 </script>
 </body>
 </html>

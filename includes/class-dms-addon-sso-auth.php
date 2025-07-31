@@ -85,7 +85,6 @@ class DMS_Addon_Sso_Auth {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
 		add_action( 'login_enqueue_scripts', [ $this, 'enqueue_login_scripts' ] );
-		add_action( 'wp_login', [ $this, 'handle_login' ], 10, 2 );
 	}
 
 	/**
@@ -325,10 +324,6 @@ class DMS_Addon_Sso_Auth {
 	 */
 	public function login( WP_REST_Request $request ): WP_REST_Response {
 		try {
-//			if ( ! $this->check_rate_limit() ) {
-//				throw new Exception( 'Too many login attempts' );
-//			}
-
 			$credentials = $this->validate_login_credentials( $request );
 			$user        = wp_authenticate( $credentials['username'], $credentials['password'] );
 
@@ -443,7 +438,7 @@ class DMS_Addon_Sso_Auth {
 	 */
 	public function setAuthDomains(): void {
 		$domains         = $this->get_auth_domains();
-		$this->host_list = array_unique( array_filter( $domains ) );
+		$this->host_list = array_unique( array_filter( $domains, [ $this, 'is_domain_valid' ] ) );
 	}
 
 	/**
@@ -471,9 +466,14 @@ class DMS_Addon_Sso_Auth {
 			}
 		}
 
+
 		$domains[] = $this->request_params->base_host;
 		$domains[] = $this->request_params->domain;
 
 		return $domains;
+	}
+
+	private function is_domain_valid( string $domain ): bool {
+		return ! empty( $domain ) && checkdnsrr( $domain, 'A' );
 	}
 }
