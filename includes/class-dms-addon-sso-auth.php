@@ -29,6 +29,8 @@ class DMS_Addon_Sso_Auth {
 	 */
 	private array $host_list = [];
 
+	private string $version = '';
+
 	/**
 	 * Token expiry time in seconds.
 	 */
@@ -39,6 +41,8 @@ class DMS_Addon_Sso_Auth {
 	 */
 	private function __construct() {
 		$this->request_params = new Request_Params();
+		$this->version = defined('DMS_LIGHTSOURCEUSERS_VERSION') ? DMS_LIGHTSOURCEUSERS_VERSION : '1.0';
+
 		$this->init();
 	}
 
@@ -128,7 +132,7 @@ class DMS_Addon_Sso_Auth {
 				'cross-domain-auth',
 				esc_url( home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'assets/js/dms-addon-auth.js' ),
 				[],
-				'1.0',
+				$this->version,
 				true
 			);
 
@@ -180,7 +184,7 @@ class DMS_Addon_Sso_Auth {
 	public function generate_token( WP_REST_Request $request ): WP_REST_Response {
 		try {
 			if ( ! is_user_logged_in() ) {
-				throw new Exception( 'User not logged in' );
+				throw new Exception( 'Authentication required' );
 			}
 
 			$user  = wp_get_current_user();
@@ -193,7 +197,7 @@ class DMS_Addon_Sso_Auth {
 		} catch ( Exception $e ) {
 			return new WP_REST_Response( [
 				'success' => false,
-				'error'   => $e->getMessage()
+				'error'   => 'Authentication failed'
 			], 401 );
 		}
 	}
@@ -247,7 +251,7 @@ class DMS_Addon_Sso_Auth {
 		} catch ( Exception $e ) {
 			return new WP_REST_Response( [
 				'success' => false,
-				'error'   => $e->getMessage()
+				'error'   => 'Token validation failed'
 			], 401 );
 		}
 	}

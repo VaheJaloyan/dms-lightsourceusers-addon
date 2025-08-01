@@ -6,49 +6,176 @@
     <style>
         body {
             font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background: #f7fafc;
+            background: url('https://lightsourceusers.org/wp-content/uploads/2024/09/header-bg-scaled.jpg') no-repeat center center fixed;
+            background-size: cover;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
             color: #2d3748;
+            overflow: hidden;
         }
 
-        .login-box {
-            background: #ffffff;
-            padding: 2rem 2.5rem;
-            border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+        .auth-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 2.5rem 3rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             text-align: center;
-            max-width: 400px;
-            width: 100%;
+            max-width: 450px;
+            width: 90%;
+            position: relative;
+            overflow: hidden;
         }
 
-        .login-box h2 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
+        .auth-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: url('https://lightsourceusers.org/wp-content/uploads/2024/09/header-bg-scaled.jpg') no-repeat center center fixed;
         }
 
-        .login-box p {
-            margin: 0.5rem 0;
+        .auth-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            animation: pulse 2s infinite;
+        }
+
+        .auth-heading {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: #1a202c;
+        }
+
+        .auth-subtitle {
             font-size: 1rem;
             color: #4a5568;
+            margin-bottom: 1.5rem;
+        }
+
+        .host-display {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-weight: 500;
+            color: #2d3748;
+        }
+
+        .status-message {
+            font-size: 0.95rem;
+            color: #4a5568;
+            margin: 1rem 0;
+            line-height: 1.5;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 3px;
+            margin: 1.5rem 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.3s ease;
+            animation: progress 2s ease-in-out infinite;
         }
 
         .error-message {
             color: #e53e3e;
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+            border-radius: 8px;
+            padding: 1rem;
             margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            margin: 1.5rem 0;
+            gap: 0.5rem;
+        }
+
+        .step-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #cbd5e0;
+            transition: background 0.3s ease;
+        }
+
+        .step-dot.active {
+            background: #667eea;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes progress {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e2e8f0;
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
-<div class="login-box">
-    <h2 id="auth-heading">🔐 Authenticating...</h2>
-    <p id="process-message">Preparing secure connection for:</p>
-    <p><strong id="current-host"></strong></p>
-    <p id="status-message" class="redirect-note">Please wait while we complete the process...</p>
-    <p id="error-message" class="error-message"></p>
+<div class="auth-container">
+    <div class="auth-icon" id="auth-icon">🔐</div>
+    <h1 class="auth-heading" id="auth-heading">Authenticating...</h1>
+    <p class="auth-subtitle" id="auth-subtitle">Preparing secure connection</p>
+
+    <div class="host-display">
+        <strong id="current-host"></strong>
+    </div>
+
+    <div class="step-indicator" id="step-indicator">
+        <div class="step-dot active"></div>
+        <div class="step-dot"></div>
+        <div class="step-dot"></div>
+    </div>
+
+    <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <p class="status-message" id="status-message">
+        <span class="spinner"></span>
+        Please wait while we complete the process...
+    </p>
+
+    <div id="error-message" class="error-message" style="display: none;"></div>
 </div>
 
 <script>
@@ -61,10 +188,11 @@
     const path = window.location.pathname;
 
     const heading = document.getElementById('auth-heading');
-    const processMessage = document.getElementById('process-message');
+    const processMessage = document.getElementById('auth-subtitle');
     const currentHost = document.getElementById('current-host');
     const statusMessage = document.getElementById('status-message');
     const errorMessage = document.getElementById('error-message');
+    const stepIndicator = document.getElementById('step-indicator');
 
     // Show current host
     currentHost.textContent = window.location.hostname;
@@ -76,14 +204,17 @@
     handleAuth();
 
     function updateUI(action) {
+        const icon = document.getElementById('auth-icon');
         if (action === 'logout') {
             heading.textContent = '🔓 Logging You Out...';
             processMessage.textContent = 'Ending your session securely for:';
-            statusMessage.textContent = 'Please wait while we log you out from all connected services...';
+            statusMessage.innerHTML = '<span class="spinner"></span>Logging out from all services...';
+            icon.textContent = '🔓';
         } else {
             heading.textContent = '🔐 Logging You In...';
             processMessage.textContent = 'Authenticating your account for:';
-            statusMessage.textContent = 'Please wait while we securely log you in...';
+            statusMessage.innerHTML = '<span class="spinner"></span>Logging in securely...';
+            icon.textContent = '🔐';
         }
     }
 
@@ -182,11 +313,11 @@
 
     function handleError(error) {
         console.error('Authentication error:', error);
+        errorMessage.style.display = 'block';
         errorMessage.textContent = error.message || 'An error occurred during authentication';
-        statusMessage.textContent = 'Authentication failed. This window will close shortly...';
+        statusMessage.innerHTML = 'Authentication failed. This window will close shortly...';
         setTimeout(() => window.close(), 3000);
     }
-
 </script>
 </body>
 </html>
