@@ -2,8 +2,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const form = document.querySelector('#loginform');
 
     // Build a centered popup config based on the popup's width/height
-    const popupWidth = Math.round(window.outerWidth / 2);
-    const popupHeight = Math.round(window.outerWidth / 4);
+    const popupWidth = Math.round(window.outerWidth / 3);
+    const popupHeight = Math.round(window.outerWidth / 6);
 
     // Browser-compatible origin of the current window on the desktop
     const originX = (typeof window.screenX !== 'undefined' ? window.screenX : window.screenLeft) || 0;
@@ -74,9 +74,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success && data.token) {
                     // Validate and sanitize URLs
                     const popupUrl = new URL(cdaSettings.authPopup, window.location.origin);
-                    const sanitizedHosts = cdaSettings.host_list
-                        .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host));
+                    const currentHost = window.location.hostname;
 
+                    const hostList = Array.isArray(cdaSettings.host_list)
+                        ? cdaSettings.host_list
+                        : Object.values(cdaSettings.host_list);
+
+                    const sanitizedHosts = hostList
+                        .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host))
+                        .filter(host => host !== currentHost);
                     // Add required parameters
                     popupUrl.searchParams.set('token', data.token);
                     popupUrl.searchParams.set('redirect_url', redirectUrl);
@@ -115,8 +121,14 @@ document.addEventListener('DOMContentLoaded', function () {
             try {
                 // Validate popup URL
                 const popupUrl = new URL(cdaSettings.authPopup, window.location.origin);
-                const sanitizedHosts = cdaSettings.host_list
+
+                const hostList = Array.isArray(cdaSettings.host_list)
+                    ? cdaSettings.host_list
+                    : Object.values(cdaSettings.host_list);
+
+                const sanitizedHosts = hostList
                     .filter(host => /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(host));
+
 
                 // Add secure parameters
                 popupUrl.searchParams.set('action', 'logout');

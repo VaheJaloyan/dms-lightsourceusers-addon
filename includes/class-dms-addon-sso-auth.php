@@ -127,6 +127,13 @@ class DMS_Addon_Sso_Auth {
 	 * @return void
 	 */
 	public function enqueue_scripts(): void {
+		$current_domain = parse_url( home_url(), PHP_URL_HOST );
+
+		// If the current domain is not in the host list, don't enqueue
+		if ( ! in_array( $current_domain, $this->host_list, true ) ) {
+			return;
+		}
+
 		if ( ! wp_script_is( 'cross-domain-auth', 'registered' ) ) {
 			wp_register_script(
 				'cross-domain-auth',
@@ -139,7 +146,7 @@ class DMS_Addon_Sso_Auth {
 			wp_localize_script( 'cross-domain-auth', 'cdaSettings', [
 				'ajaxUrl'             => esc_url_raw( rest_url( 'dms-addon-sso/v1' ) ),
 				'authPopup'           => esc_url( home_url() . '/' . DMS_ADDON_PLUGIN_URL . 'auth/storage.html' ),
-				'domain'              => esc_js( parse_url( home_url(), PHP_URL_HOST ) ),
+				'domain'              => esc_js( $current_domain ),
 				'nonce'               => wp_create_nonce( 'wp_rest' ),
 				'host_list'           => array_map( 'esc_js', $this->host_list ),
 				'logout_redirect_url' => wp_sanitize_redirect( $this->get_logout_redirect_url() ),
@@ -470,14 +477,40 @@ class DMS_Addon_Sso_Auth {
 			}
 		}
 
-
 		$domains[] = $this->request_params->base_host;
-		$domains[] = $this->request_params->domain;
 
 		return $domains;
 	}
 
-	private function is_domain_valid( string $domain ): bool {
-		return ! empty( $domain ) && checkdnsrr( $domain, 'A' );
+	private function is_domain_valid(string $domain): bool {
+		// Check if domain is not empty and resolves to an IP
+		if (empty($domain) || gethostbyname($domain) === $domain) {
+			return false;
+		}
+
+		// Quick SSL check using stream_socket_client
+		$context = stream_context_create([
+			'ssl' => [
+				'verify_peer' => true,
+				'verify_peer_name' => true,
+				'allow_self_signed' => false
+			]
+		]);
+
+		$socket = @stream_socket_client(
+			"ssl://$domain:443",
+			$errno,
+			$errstr,
+			3, // Timeout in seconds
+			STREAM_CLIENT_CONNECT,
+			$context
+		);
+
+		if (!$socket) {
+			return false; // Connection or SSL verification failed
+		}
+
+		fclose($socket);
+		return true;
 	}
 }

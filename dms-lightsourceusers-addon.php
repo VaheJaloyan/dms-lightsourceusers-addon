@@ -12,6 +12,8 @@ defined( 'ABSPATH' ) || exit;
 
 define( 'DMS_ADDON_PLUGIN_URL', 'wp-content/plugins/dms-lightsourceusers-addon/' );
 define( 'DMS_JWT_SECRET_KEY', 'B67FCEBD-1789-4E38-84A2-B31DAA72513E' );
+define( 'DMS_LIGHTSOURCEUSERS_VERSION', '1.8' );
+
 
 // Check PHP version.
 if ( version_compare( PHP_VERSION, '8.0', '<' ) ) {

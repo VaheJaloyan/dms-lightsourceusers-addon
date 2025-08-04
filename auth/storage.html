@@ -25,7 +25,7 @@
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             text-align: center;
             max-width: 450px;
-            width: 90%;
+            width: 80%;
             position: relative;
             overflow: hidden;
         }
@@ -156,20 +156,6 @@
     <h1 class="auth-heading" id="auth-heading">Authenticating...</h1>
     <p class="auth-subtitle" id="auth-subtitle">Preparing secure connection</p>
 
-    <div class="host-display">
-        <strong id="current-host"></strong>
-    </div>
-
-    <div class="step-indicator" id="step-indicator">
-        <div class="step-dot active"></div>
-        <div class="step-dot"></div>
-        <div class="step-dot"></div>
-    </div>
-
-    <div class="progress-bar">
-        <div class="progress-fill" id="progress-fill"></div>
-    </div>
-
     <p class="status-message" id="status-message">
         <span class="spinner"></span>
         Please wait while we complete the process...
@@ -189,13 +175,8 @@
 
     const heading = document.getElementById('auth-heading');
     const processMessage = document.getElementById('auth-subtitle');
-    const currentHost = document.getElementById('current-host');
     const statusMessage = document.getElementById('status-message');
     const errorMessage = document.getElementById('error-message');
-    const stepIndicator = document.getElementById('step-indicator');
-
-    // Show current host
-    currentHost.textContent = window.location.hostname;
 
     // Set UI based on action
     updateUI(action);
